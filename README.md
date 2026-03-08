@@ -7,7 +7,7 @@ I got tired of hitting `Ctrl+C`, `go build`, `./server` fifty times a day. So I 
 ```bash
 hotreload --root ./myproject --build "go build -o ./bin/server ./cmd/server" --exec "./bin/server"
 ```
-
+Project Website: https://lokeshreddygoli.github.io/hotreload/
 ---
 
 ## Install
