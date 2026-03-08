@@ -1,0 +1,16 @@
+bin/
+*.exe
+*.test
+*.out
+
+go.work
+go.work.sum
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+.DS_Store
+Thumbs.db
