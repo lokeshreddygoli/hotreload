@@ -13,8 +13,9 @@ import (
 
 const gracefulKillTimeout = 3 * time.Second
 
-// Windows Job Object API constants.
+// Windows API constants not exposed by Go's syscall package.
 const (
+	processAllAccess                = 0x1F0FFF
 	jobObjectLimitKillOnJobClose    = 0x2000
 	jobObjectExtendedLimitInfoClass = 9
 )
@@ -60,8 +61,8 @@ type jobObjectExtendedLimitInfo struct {
 // jobHandles maps each Proc to its Windows Job Object handle.
 var jobHandles = make(map[*Proc]syscall.Handle)
 
-// buildCmd creates a cmd for Windows, wrapped in cmd.exe /C so shell
-// built-ins and PATH resolution work as expected.
+// buildCmd creates a cmd for Windows wrapped in cmd.exe /C so shell
+// built-ins and PATH resolution work correctly.
 func buildCmd(ctx context.Context, command string) *exec.Cmd {
 	args := shellArgs(command)
 	cmd := exec.CommandContext(ctx, "cmd.exe", append([]string{"/C"}, args...)...)
@@ -77,8 +78,8 @@ func afterStart(p *Proc) {
 	initJobObject(p)
 }
 
-// createJobObject creates a Job Object, configures KILL_ON_JOB_CLOSE, and
-// assigns the given process handle to it.
+// createJobObject creates a Job Object, sets KILL_ON_JOB_CLOSE, and assigns
+// the given process handle to it.
 func createJobObject(handle syscall.Handle) (syscall.Handle, error) {
 	job, _, err := procCreateJobObject.Call(0, 0)
 	if job == 0 {
@@ -108,15 +109,18 @@ func createJobObject(handle syscall.Handle) (syscall.Handle, error) {
 	return jobHandle, nil
 }
 
-// initJobObject associates the process with a Job Object immediately after start.
-// Falls back gracefully — Kill() will use taskkill if no job is available.
+// initJobObject associates the process with a Job Object immediately after
+// start. Falls back gracefully — Kill() will use taskkill if unavailable.
 func initJobObject(p *Proc) {
 	if p.cmd.Process == nil {
 		return
 	}
 
+	// Use OpenProcess with the manually defined constant instead of
+	// syscall.PROCESS_ALL_ACCESS which is not available on Windows in Go's
+	// standard syscall package.
 	handle, err := syscall.OpenProcess(
-		syscall.PROCESS_ALL_ACCESS, false, uint32(p.cmd.Process.Pid),
+		processAllAccess, false, uint32(p.cmd.Process.Pid),
 	)
 	if err != nil {
 		p.logger.Debug("OpenProcess failed, job object unavailable", "err", err)
@@ -146,7 +150,7 @@ func initJobObject(p *Proc) {
 }
 
 // Kill terminates the process tree on Windows.
-// Order: Job Object termination → taskkill /F /T → direct Process.Kill.
+// Order: Job Object → taskkill /F /T → direct Process.Kill.
 func (p *Proc) Kill() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
